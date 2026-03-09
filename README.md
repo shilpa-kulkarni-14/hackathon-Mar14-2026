@@ -1,4 +1,4 @@
-# OpenClaw Hackathon Setup Guide with Docker
+# OpenClaw Hackathon Setup Guide
 
 ## Overview
 
@@ -236,6 +236,54 @@ Verify: `Get-Content .env` — you should see your key printed.
 
 ---
 
+## Step 5a: Harden Your API Key File (Required)
+
+These two steps protect your key from accidental exposure. Run them immediately after creating `.env`.
+
+### Restrict file permissions (Mac only)
+
+```bash
+# Prevents other users on the same machine from reading your key
+chmod 600 .env
+```
+
+Verify the permissions were set correctly:
+
+```bash
+ls -la .env
+# Expected output: -rw------- 1 yourname staff ... .env
+```
+
+> **Tip:** Windows NTFS file permissions are managed through folder ownership. If you are the sole user on your Windows machine, no additional step is needed. On a shared or corporate Windows machine, right-click `.env` > Properties > Security > ensure only your user account has access.
+
+### Prevent accidental Git commits
+
+If you push any code during the hackathon, this ensures your key is never committed.
+
+```bash
+# Mac
+echo ".env" >> .gitignore
+
+# Windows
+".env" | Out-File -FilePath .gitignore -Append -Encoding utf8
+```
+
+Verify:
+
+```bash
+# Mac
+cat .gitignore
+
+# Windows
+Get-Content .gitignore
+```
+
+You should see `.env` listed.
+
+> **Warning:** If `.gitignore` does not contain `.env` and you run `git add .`, your key will be staged for commit. Anyone who can see your repo will have access to your billing account.
+
+---
+
 ## Step 6: Run OpenClaw with Docker
 
 > **Warning: Docker Desktop MUST be running first.** Open **Docker Desktop** from your Applications (Mac) or Start menu (Windows) and **wait until it fully starts** (whale icon stops animating on Mac, or "Docker Desktop is running" message on Windows). If you skip this, you'll get a `failed to connect to the docker API` error.
@@ -293,6 +341,104 @@ docker compose ps
 
 ---
 
+## Step 6a: Harden docker-compose.yml (Required)
+
+Before opening the dashboard, apply these security controls to the Docker Compose configuration. These prevent the container from running with unnecessary privileges on your personal machine.
+
+### Open the file
+
+```bash
+# Mac
+open -e docker-compose.yml        # opens in TextEdit
+# or use any editor: nano docker-compose.yml
+
+# Windows
+notepad docker-compose.yml
+```
+
+### Find the `openclaw` service block
+
+It will look something like this:
+
+```yaml
+services:
+  openclaw:
+    image: openclaw:local
+    ports:
+      - "127.0.0.1:18789:18789"
+    env_file:
+      - .env
+```
+
+### Add the hardening block
+
+Under the `openclaw` service, add the following lines at the same indentation level as `image`, `ports`, etc.:
+
+```yaml
+    # Security hardening — add these lines
+    user: "1000:1000"               # run as non-root user; prevents privilege escalation
+    read_only: true                 # container filesystem is read-only
+    cap_drop:
+      - ALL                         # drop all Linux kernel capabilities
+    security_opt:
+      - no-new-privileges:true      # process cannot gain new privileges at runtime
+    tmpfs:
+      - /tmp                        # allow writes only to /tmp (required for runtime temp files)
+```
+
+### Complete hardened service block (copy-paste ready)
+
+Replace the entire `openclaw` service block in `docker-compose.yml` with this:
+
+```yaml
+services:
+  openclaw:
+    image: openclaw:local
+    user: "1000:1000"               # run as non-root; prevents privilege escalation
+    read_only: true                 # container filesystem is read-only
+    cap_drop:
+      - ALL                         # drop all Linux kernel capabilities
+    security_opt:
+      - no-new-privileges:true      # process cannot gain new privileges at runtime
+    tmpfs:
+      - /tmp                        # allow writes only to /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'               # prevent runaway inference from freezing your laptop
+          memory: 4G
+    ports:
+      - "127.0.0.1:18789:18789"    # explicit localhost-only binding; no external exposure
+    env_file:
+      - .env
+    network_mode: "bridge"          # default, but explicit — isolates container from host network
+```
+
+**What this adds over the basic block:**
+
+- **CPU/Memory limits** — caps at 2 CPU cores and 4 GB RAM so a runaway inference job cannot freeze your laptop
+- **`network_mode: bridge` + `127.0.0.1:` binding** — ensures zero external network exposure; the service is unreachable from outside your machine
+- **`user`, `read_only`, `cap_drop`, `no-new-privileges`** — prevents container processes from escalating privileges or writing outside `/tmp`
+
+> **Tip:** YAML indentation is strict — use **spaces, not tabs**. Each nested line must be indented with exactly 2 or 4 spaces (match whatever the rest of the file uses).
+
+> **Warning:** If OpenClaw fails to start after this change and shows a `permission denied` error in the logs (`docker compose logs openclaw`), the container image may require running as root. In that case, remove the `user: "1000:1000"` line only and keep the remaining controls. Ask your hackathon organizer if you are unsure.
+
+### Save and restart
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+Verify containers are running:
+
+```bash
+docker compose ps
+```
+
+---
+
 ## Step 7: Open OpenClaw in Your Browser
 
 The dashboard URL **includes your token** — you can't just go to `localhost:18789` directly or you'll get a `gateway token missing` error. Use the command below to get the correct URL:
@@ -324,6 +470,8 @@ Then open: `http://127.0.0.1:18789/?token=YOUR_TOKEN_HERE`
 
 > **Tip:** If the page doesn't load, wait a minute and refresh — OpenClaw may still be starting.
 
+> **Security note:** Never bookmark or share this URL. The `?token=...` query parameter grants full access to your OpenClaw instance. After your first login the token is saved as a browser cookie, so subsequent visits to `http://127.0.0.1:18789` will work without the token in the URL. Clear your browser history for this address when the hackathon ends (see Cleanup, Step 6).
+
 ---
 
 ## Troubleshooting
@@ -346,7 +494,7 @@ Then open: `http://127.0.0.1:18789/?token=YOUR_TOKEN_HERE`
 
 ## After the Hackathon: Cleanup
 
-### 1. Stop and remove OpenClaw
+### 1. Stop and remove OpenClaw containers and volumes
 
 ```bash
 cd ~/openclaw          # Mac
@@ -355,15 +503,47 @@ cd ~\openclaw          # Windows
 docker compose down -v
 ```
 
-### 2. Revoke your API key
+### 2. Remove the Docker image (Required)
 
-| Provider | Where to revoke |
-|----------|----------------|
-| **Anthropic** | https://console.anthropic.com/ > API keys > trash icon |
-| **Google Gemini** | https://aistudio.google.com/ > Get API key > trash icon |
-| **OpenAI** | https://platform.openai.com/api-keys > trash icon |
+The `docker compose down` command stops containers but does **not** remove the built image. Do this explicitly:
 
-### 3. Delete project files (optional)
+```bash
+docker rmi openclaw:local
+```
+
+Verify the image is gone:
+
+```bash
+docker images | grep openclaw
+# Expected: no output
+```
+
+> **Tip:** If you want to remove all unused Docker images at once (not just OpenClaw), run `docker image prune -a`. This frees up disk space but removes all images not tied to a running container.
+
+### 3. Securely delete your `.env` file (Required)
+
+Do not just delete the `.env` file — overwrite it first so the key cannot be recovered from disk.
+
+```bash
+# Mac / Linux
+shred -u ~/openclaw/.env
+
+# Windows (overwrite then delete)
+(Get-Content "$HOME\openclaw\.env") -replace '.', '0' | Set-Content "$HOME\openclaw\.env"
+Remove-Item "$HOME\openclaw\.env"
+```
+
+### 4. Revoke your API key (Required)
+
+Even after deleting the `.env` file, revoke the key from the provider's console to ensure it cannot be used by anyone who may have seen it.
+
+| Provider | Direct revoke URL |
+|----------|------------------|
+| **Anthropic** | https://console.anthropic.com/settings/keys |
+| **Google Gemini** | https://aistudio.google.com/app/apikey |
+| **OpenAI** | https://platform.openai.com/api-keys |
+
+### 5. Delete project files (optional)
 
 ```bash
 # Mac
@@ -375,7 +555,17 @@ Remove-Item -Recurse -Force ~\openclaw, ~\openclaw-workspace
 
 > **Warning:** This deletes your hackathon project files too. Copy **openclaw-workspace** somewhere safe first if you want to keep your work.
 
-### 4. Uninstall Docker Desktop (optional)
+### 6. Revoke API key + clear browser data (Required)
+
+The dashboard URL contains your gateway token in the query string. Clear your browser history to prevent the token from persisting after the hackathon.
+
+| Browser | Steps |
+|---------|-------|
+| **Chrome / Edge** | Settings > Privacy and Security > Clear browsing data > Browsing history — filter by `127.0.0.1:18789` |
+| **Firefox** | History > Clear Recent History |
+| **Safari** | History > Clear History |
+
+### 7. Uninstall Docker Desktop (optional)
 
 - **Mac:** Drag Docker from Applications to Trash.
 - **Windows:** Settings > Apps > Docker Desktop > Uninstall.
