@@ -1,4 +1,4 @@
-# OpenClaw Hackathon Setup Guide
+# OpenClaw Hackathon Setup Guide with Docker
 
 ## Overview
 
