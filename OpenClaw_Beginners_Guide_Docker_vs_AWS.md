@@ -4,6 +4,18 @@
 
 ---
 
+> **A Note on Security -- Please Read First**
+>
+> Setting up and running any AI agent -- including OpenClaw -- comes with inherent security concerns. This guide walks you through steps to mitigate and minimize those risks, including:
+>
+> - Docker security hardening
+> - API key protection
+> - Data privacy controls
+>
+> However, no setup is entirely risk-free. Even after following every step in this guide, **how you use OpenClaw can still introduce security challenges.** We want to be transparent: the hardening steps below reduce your risk, but they do not eliminate it. Please operate with caution and a safety-first mindset. Keep your guard up, stay informed, and treat every tool -- no matter how well-configured -- as something that deserves your ongoing attention and care.
+
+---
+
 ## Table of Contents
 
 1. [Before We Start: What Even Is OpenClaw?](#1-before-we-start-what-even-is-openclaw)
@@ -1130,3 +1142,4 @@ Whether you choose Docker or AWS, you're making a deliberate, informed choice. T
 
 *Created for the March 14, 2026 Hackathon*
 *Audience: Women new to AI tools who prioritize security and privacy*
+
