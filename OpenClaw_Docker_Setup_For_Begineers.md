@@ -562,6 +562,74 @@ docker compose ps
 
 ---
 
+## Step 6b: Start the Gateway
+
+The **gateway** is the part of OpenClaw that connects your browser to the AI. Think of it like a receptionist — it receives your requests and routes them to the right place.
+
+> **When do you need this?** The setup script (`./docker-setup.sh`) starts the gateway automatically the first time. But if you restart your computer, close Docker, or stop the containers, you'll need to start the gateway again manually.
+
+### Start the gateway
+
+Make sure you're in the openclaw folder first:
+
+```bash
+# Mac
+cd ~/openclaw
+
+# Windows
+cd ~\openclaw
+```
+
+Then start all containers (including the gateway):
+
+```bash
+docker compose up -d
+```
+
+> **What does `-d` mean?** It stands for "detached" — it runs everything in the background so you can keep using your terminal. Without `-d`, the terminal would be locked up showing logs until you press Ctrl+C.
+
+✅ **What success looks like:** You see messages like:
+
+```
+[+] Running 2/2
+ ✔ Container openclaw-gateway-1  Started
+ ✔ Container openclaw-1          Started
+```
+
+**Verify the gateway is running:**
+
+```bash
+docker compose ps
+```
+
+✅ **What success looks like:** You see a table with containers listed and their status as "running" or "Up".
+
+❌ **If the gateway won't start:** Try stopping everything first, then starting fresh:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+If it still fails, check the logs for error details:
+
+```bash
+docker compose logs openclaw
+```
+
+> **Quick reference — all the commands you'll use day-to-day:**
+>
+> | What you want to do | Command |
+> |---|---|
+> | Start OpenClaw & gateway | `docker compose up -d` |
+> | Stop OpenClaw | `docker compose down` |
+> | Restart OpenClaw | `docker compose down && docker compose up -d` |
+> | Check if it's running | `docker compose ps` |
+> | See error logs | `docker compose logs openclaw` |
+> | Get dashboard URL | `docker compose run --rm openclaw-cli dashboard --no-open` |
+
+---
+
 ## Step 7: Open OpenClaw in Your Browser
 
 The dashboard URL **includes your token** — you can't just go to `localhost:18789` directly or you'll get a `gateway token missing` error. Use the command below to get the correct URL:
