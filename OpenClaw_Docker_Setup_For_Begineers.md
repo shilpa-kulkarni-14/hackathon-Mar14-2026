@@ -692,6 +692,117 @@ Don't panic — errors are normal, especially the first time. Find your error me
 | **`disk space`** or **`no space left on device`** | Docker images are large and your disk is full. | Free up at least **10 GB** of disk space (delete old files, empty trash) and retry. |
 | **`YAML syntax error`** or container won't start after editing docker-compose.yml | You probably used tabs instead of spaces, or the indentation is wrong. | Re-open `docker-compose.yml` and re-copy the **entire** hardened block from Step 6a. Make sure you use **spaces, not tabs**. |
 
+### Recovering a Lost Gateway (Containers Stopped or Crashed)
+
+Sometimes Docker containers stop unexpectedly — your laptop went to sleep, Docker Desktop quit, your machine restarted, or the container simply crashed. When this happens, you'll see errors like "connection refused," "page won't load," or the dashboard just goes blank.
+
+**Don't worry — your data and API key are safe.** The containers are just stopped. Here's how to get everything back:
+
+#### Step 1: Open your terminal and navigate to the openclaw folder
+
+```bash
+# Mac
+cd ~/openclaw
+
+# Windows
+cd ~\openclaw
+```
+
+#### Step 2: Check what happened
+
+```bash
+docker compose ps -a
+```
+
+> **What does `-a` mean?** It shows ALL containers, including stopped ones. Without `-a`, you only see running containers (which would show nothing if everything crashed).
+
+You'll likely see something like:
+
+```
+NAME                    STATUS
+openclaw-1              Exited (137) 2 hours ago
+openclaw-gateway-1      Exited (137) 2 hours ago
+```
+
+The word **"Exited"** confirms the containers stopped. The number in parentheses is an exit code — don't worry about what it means.
+
+#### Step 3: Re-set your environment variables
+
+Environment variables are lost when you close your terminal or restart your machine. You need to set them again:
+
+```bash
+# Mac
+export OPENCLAW_SANDBOX=1
+export OPENCLAW_WORKSPACE_DIR=~/openclaw-workspace
+export OPENCLAW_CONFIG_DIR=~/.openclaw
+```
+
+```powershell
+# Windows
+$env:OPENCLAW_SANDBOX="1"
+$env:OPENCLAW_WORKSPACE_DIR="$HOME\openclaw-workspace"
+$env:OPENCLAW_CONFIG_DIR="$HOME\.openclaw"
+```
+
+#### Step 4: Stop the old containers cleanly, then restart
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+> **Why `down` first?** Even though the containers are already stopped, `docker compose down` removes the old container state cleanly. Starting fresh avoids leftover conflicts.
+
+#### Step 5: Verify everything is running
+
+```bash
+docker compose ps
+```
+
+✅ **What success looks like:** Containers show status "running" or "Up".
+
+#### Step 6: Get your dashboard URL again
+
+Your gateway token is still saved — you just need to retrieve it:
+
+```bash
+docker compose run --rm openclaw-cli dashboard --no-open
+```
+
+If that doesn't work, get the token manually:
+
+```bash
+# Mac
+cat ~/.openclaw/openclaw.json | grep token
+
+# Windows
+Get-Content "$HOME\.openclaw\openclaw.json" | Select-String "token"
+```
+
+Then open: `http://127.0.0.1:18789/?token=YOUR_TOKEN_HERE`
+
+✅ **You're back!** The gateway is running and you can use OpenClaw again.
+
+#### If it STILL won't start — full reset (last resort)
+
+If the steps above don't work, do a complete teardown and rebuild. **This does NOT delete your API key or workspace files** — it only rebuilds the Docker containers.
+
+```bash
+# Stop and remove everything
+docker compose down -v
+
+# Re-set environment variables (see Step 3 above)
+
+# Rebuild from scratch
+./docker-setup.sh
+```
+
+This re-runs the full setup (5-15 minutes) but starts completely fresh. Your `.env` file (API key) and workspace folder are untouched.
+
+> **When would you need this?** After a Docker Desktop update, after a major OS update, or if the containers got corrupted somehow. It's rare, but it fixes almost everything.
+
+---
+
 ### What to Do If Nothing Above Helps
 
 Before asking for help, gather this information — it will help the mentor solve your problem much faster:
