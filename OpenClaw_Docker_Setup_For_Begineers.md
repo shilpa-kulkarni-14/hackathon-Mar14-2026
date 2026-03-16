@@ -10,6 +10,28 @@ This guide walks you through installing Docker, getting an AI **API key**, and l
 
 ---
 
+## Prerequisites & System Requirements
+
+Before you begin, make sure your machine meets these minimums:
+
+| Requirement | Minimum | Recommended |
+|-------------|---------|-------------|
+| **OS** | macOS 12+ / Windows 10 (21H2+) | macOS 13+ / Windows 11 |
+| **CPU** | 2 cores | 4+ cores |
+| **RAM** | 4 GB free | 8 GB free |
+| **Disk** | 10 GB free | 20 GB free |
+| **Docker Desktop** | 4.20+ (Engine 25+) | Latest stable |
+| **Docker Compose** | v2 (bundled with Docker Desktop) | Latest |
+| **Git** | 2.30+ | Latest |
+
+> **Apple Silicon (M1/M2/M3/M4):** Fully supported. Docker Desktop runs natively on ARM — just download the "Apple Silicon" version in Step 1.
+
+> **Windows + WSL 2:** Docker Desktop on Windows requires **WSL 2** (Windows Subsystem for Linux). If Docker prompts you to install it, follow the on-screen instructions and restart. If your company locks down WSL, ask IT to enable it or use a personal machine.
+
+> **VPN / Corporate Proxy / Firewall Warning:** If you're on a corporate or school network, VPNs, proxies, and firewalls can block Docker image pulls and container networking. Signs: `timeout`, `TLS handshake error`, or `connection refused` during build. **Fix:** Disconnect from the VPN, use a personal hotspot, or ask IT to whitelist `registry-1.docker.io`, `ghcr.io`, and `production.cloudflare.docker.com`.
+
+---
+
 ## Important: Security Awareness — Read This First
 
 > **Be transparent with yourself: this setup has real security considerations.**
@@ -193,6 +215,8 @@ An **API key** is like a **secret password** that lets OpenClaw talk to an AI se
 
 > **Warning:** NEVER share your API key with anyone — not in chat, email, Slack, or anywhere public. Anyone with your key can charge your account.
 
+> **Where to store secrets safely:** Never put API keys in source code, commit messages, or chat. Use the `.env` file (Step 5) and ensure it's in `.gitignore` (Step 5a). For long-term projects beyond this hackathon, consider a secrets manager like 1Password, Bitwarden, or macOS Keychain.
+
 ---
 
 ## Step 3: Open Your Terminal or CLI
@@ -353,6 +377,18 @@ Get-Content .env
 ✅ **What success looks like:** You see your key printed.
 
 > **Warning:** The **.env** file contains your secret key. Never share it or commit it to Git.
+
+> **What is a `.env` file?** It's a plain text file that holds configuration values (like secrets) as `KEY=VALUE` pairs, one per line. Docker reads this file and passes the values into the container as environment variables. The leading dot (`.`) makes it a hidden file — it won't show up in Finder or File Explorer by default, but the terminal can see it.
+
+### Minimal working `.env` example
+
+If you just want to get running as fast as possible, your `.env` file only needs **one line** — the API key for whichever provider you chose:
+
+```
+ANTHROPIC_API_KEY=sk-ant-api03-your-real-key-here
+```
+
+That's it. One line, one key. Everything else is configured by the setup script.
 
 ---
 
@@ -562,6 +598,20 @@ docker compose ps
 
 ---
 
+## Understanding Ports and Network Binding
+
+OpenClaw exposes **port 18789** by default. Here's what you need to know:
+
+| Topic | Details |
+|-------|---------|
+| **Default port** | `18789` — this is where the dashboard and gateway listen |
+| **Port conflict** | If you see `Port already in use`, another app is on 18789. Fix: change `"127.0.0.1:18789:18789"` to e.g. `"127.0.0.1:18790:18789"` in `docker-compose.yml`, then access via `http://127.0.0.1:18790` |
+| **localhost vs 0.0.0.0** | The hardened config binds to `127.0.0.1` (localhost only) — other devices on your network **cannot** access it. If you need LAN access (e.g., testing from a phone), change to `"0.0.0.0:18789:18789"`, but understand this exposes the service to your entire network |
+| **HTTPS** | For hackathon use, HTTP on localhost is fine. For production or public-facing setups, put a reverse proxy (nginx, Caddy, or Traefik) in front of OpenClaw to terminate TLS. This is beyond the scope of this guide |
+| **Custom domain** | To use a real domain instead of `localhost`, point your DNS to the host machine's IP and use a reverse proxy with an SSL certificate (e.g., Let's Encrypt via Caddy) |
+
+---
+
 ## Step 6b: Start the Gateway
 
 The **gateway** is the part of OpenClaw that connects your browser to the AI. Think of it like a receptionist — it receives your requests and routes them to the right place.
@@ -628,6 +678,36 @@ docker compose logs openclaw
 > | See error logs | `docker compose logs openclaw` |
 > | Get dashboard URL | `docker compose run --rm openclaw-cli dashboard --no-open` |
 
+### Docker Commands Cheat Sheet
+
+If you're new to Docker, here's what these commands actually do:
+
+| Command | What it does | When to use it |
+|---------|-------------|----------------|
+| `docker compose up -d` | Starts all containers in the background | Starting OpenClaw after a reboot |
+| `docker compose down` | Stops and removes containers (data/volumes preserved) | Shutting down OpenClaw |
+| `docker compose down -v` | Stops containers AND deletes volumes (resets state) | Full reset / cleanup |
+| `docker compose ps` | Shows running containers and their status | Checking if things are running |
+| `docker compose logs openclaw` | Shows the OpenClaw container's log output | Debugging when something goes wrong |
+| `docker compose logs -f openclaw` | Follows logs in real-time (Ctrl+C to stop) | Watching startup or debugging live |
+| `docker compose restart` | Restarts containers without removing them | Quick restart after a config change |
+
+### Updating OpenClaw
+
+To pull the latest code and rebuild:
+
+```bash
+cd ~/openclaw          # Mac
+cd ~\openclaw          # Windows
+
+git pull origin main
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+```
+
+> **Tip:** The `--no-cache` flag forces Docker to rebuild from scratch. This takes longer but ensures you get a clean build with no stale layers.
+
 ---
 
 ## Step 7: Open OpenClaw in Your Browser
@@ -665,6 +745,21 @@ Then open: `http://127.0.0.1:18789/?token=YOUR_TOKEN_HERE`
 
 ---
 
+## Post-Setup Validation Checklist
+
+After completing all the steps, run through this quick checklist to confirm everything is working:
+
+- [ ] **Docker running:** `docker --version` returns a version number
+- [ ] **Containers up:** `docker compose ps` shows containers with status "running" or "Up"
+- [ ] **No crash loops:** Run `docker compose ps` again after 30 seconds — containers still show "Up" (not "Restarting")
+- [ ] **Dashboard loads:** Opening the token URL in your browser shows the OpenClaw dashboard
+- [ ] **Chat works:** Send a test message like "Hello, what can you do?" and get a response within 30 seconds
+- [ ] **API key secured:** `cat .env` (Mac) or `Get-Content .env` (Windows) shows your key, and `.gitignore` contains `.env`
+
+> **If any check fails**, see the Troubleshooting section below. The most common issues are: containers exited (restart them), dashboard loads but chat doesn't respond (API key issue or container still initializing — wait 1-2 minutes).
+
+---
+
 ## Troubleshooting
 
 Don't panic — errors are normal, especially the first time. Find your error message in the table below.
@@ -691,6 +786,21 @@ Don't panic — errors are normal, especially the first time. Find your error me
 | **Terminal seems frozen / stuck** | It's probably still working on something. | Wait 2-3 minutes. If truly stuck (nothing happening for 5+ minutes), press **Ctrl+C** to cancel and try the command again. |
 | **`disk space`** or **`no space left on device`** | Docker images are large and your disk is full. | Free up at least **10 GB** of disk space (delete old files, empty trash) and retry. |
 | **`YAML syntax error`** or container won't start after editing docker-compose.yml | You probably used tabs instead of spaces, or the indentation is wrong. | Re-open `docker-compose.yml` and re-copy the **entire** hardened block from Step 6a. Make sure you use **spaces, not tabs**. |
+| **Image pull fails** (`manifest unknown`, `pull access denied`) | The Docker image name is wrong, or you need to build locally. | Run `./docker-setup.sh` to build locally. If pulling from a registry, check the image name in `docker-compose.yml`. |
+| **Permission denied on volumes** (Linux/Mac) | Docker can't write to mounted directories. | Run `chmod -R 777 ~/openclaw-workspace ~/.openclaw` to fix permissions. On Docker Desktop, also check Settings > Resources > File Sharing. |
+| **DNS resolution failed** (`Could not resolve host`) | Your machine can't resolve DNS, often on restricted networks. | Try `ping google.com`. If it fails, switch networks or set DNS to `8.8.8.8` in your network settings. |
+| **`TLS handshake timeout`** during build | VPN or firewall is blocking Docker registry traffic. | Disconnect VPN, or try a personal hotspot. See the Prerequisites section for proxy/firewall guidance. |
+
+### OpenClaw-Specific Issues
+
+| Problem | What it means | Fix |
+|---------|--------------|-----|
+| **URL printed but nothing loads** | The container is still starting up. The URL is printed before the service is fully ready. | Wait 1-2 minutes and refresh the page. Run `docker compose logs -f openclaw` to watch progress — look for "ready" or "listening" messages. |
+| **Dashboard loads but chat doesn't respond** | The AI backend isn't connected — usually an API key issue or the provider is rate-limiting you. | Check your `.env` file has the correct key. Run `docker compose logs openclaw` and look for `401`, `403`, or `rate limit` errors. Verify your API key is valid and has credits remaining at the provider's console. |
+| **Dashboard is frozen or unresponsive** | The container may be out of memory or the browser tab crashed. | Refresh the page. If still frozen, restart: `docker compose restart`. Check resource usage with `docker stats`. |
+| **Chat times out after a long wait** | The AI provider is slow or the request is too large. | Try a shorter prompt. Check the provider's status page (e.g., status.anthropic.com). If persistent, restart the container. |
+| **Gateway token generation fails** | The onboarding step that creates the token didn't complete. | Check if the token file exists: `cat ~/.openclaw/openclaw.json` (Mac) or `Get-Content "$HOME\.openclaw\openclaw.json"` (Windows). If missing or empty, run `./docker-setup.sh` again to re-run onboarding. |
+| **`openclaw doctor` or health check fails** | Internal services didn't start properly. | If the container supports it, run `docker compose exec openclaw openclaw doctor --fix`. Otherwise, do a full reset: `docker compose down -v && ./docker-setup.sh`. |
 
 ### Recovering a Lost Gateway (Containers Stopped or Crashed)
 
@@ -809,13 +919,20 @@ Before asking for help, gather this information — it will help the mentor solv
 
 1. **The exact error message** — screenshot it or copy-paste the text
 2. **Which step you're on** (e.g., "I'm on Step 6, running `docker compose up`")
-3. **Mac or Windows?**
-4. **What you already tried** (e.g., "I restarted Docker and tried again")
+3. **Mac or Windows?** (and which chip / OS version)
+4. **Output of `docker compose logs openclaw`** — copy the last 30 lines
+5. **What you already tried** (e.g., "I restarted Docker and tried again")
 
 **Where to ask for help:**
-- Raise your hand and ask a **hackathon mentor** in person
-- Post in the **hackathon Slack/Discord channel** (include the info above)
-- Ask a neighbor — they might have hit the same issue 5 minutes ago
+
+| Channel | Best for |
+|---------|----------|
+| **Hackathon mentor (in person)** | Fastest help — raise your hand |
+| **Hackathon Slack/Discord channel** | Remote help, include error details above |
+| **OpenClaw GitHub Issues** (https://github.com/openclaw/openclaw/issues) | Bugs in OpenClaw itself |
+| **Docker Community Forums** (https://forums.docker.com) | Docker-specific problems |
+| **Stack Overflow** (tag: `docker`, `docker-compose`) | General troubleshooting |
+| **Ask a neighbor** | They might have hit the same issue 5 minutes ago |
 
 > **Remember:** There are no stupid questions. Everyone was a beginner once. The mentors are here specifically to help you.
 
